@@ -1,0 +1,69 @@
+{
+  "manifest_version": 3,
+  "name": "YaEduSolver",
+  "version": "1.16.0",
+  "description": "YaEduSolver: ответы ЕГЭ и решение Яндекс Учебника через окно расширения.",
+  "minimum_chrome_version": "111",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://education.yandex.ru/*"
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "YaEduSolver",
+    "default_popup": "popup/routes.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://education.yandex.ru/ege/*/variants/*",
+        "https://education.yandex.ru/ege/*/collections/*"
+      ],
+      "js": [
+        "ege/page-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://education.yandex.ru/ege/*/variants/*",
+        "https://education.yandex.ru/ege/*/collections/*"
+      ],
+      "js": [
+        "ege/extractor.js",
+        "ege/filler.js",
+        "ege/content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://education.yandex.ru/classroom/courses/*"
+      ],
+      "js": [
+        "bulk/solver.js",
+        "bulk/content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

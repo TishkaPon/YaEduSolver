@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f8fa; --panel: #ffffff; --text: #20242b; --muted: #8a929e;
+      --border: #e8eaee; --accent: #4d6bfe; --ok: #2f9e6e; --err: #d0453b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#121418; --panel:#1b1e24; --text:#e8eaed; --muted:#8b93a1; --border:#262a31; --accent:#5b78ff; }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+    /* Скроллбар в тон теме (иначе системный белый даже в тёмной) */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border); border-radius: 4px;
+      border: 2px solid transparent; background-clip: content-box;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: content-box; }
+    body {
+      width: 300px; background: var(--bg); color: var(--text);
+      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .top { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 6px; }
+    .brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .logo { width: 22px; height: 22px; border-radius: 6px; flex: 0 0 auto; display: block; }
+    .name { font-weight: 650; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .actions { display: flex; gap: 2px; }
+    .icon {
+      width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent;
+      color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .icon:hover { background: var(--panel); color: var(--text); }
+    main { padding: 0 14px 14px; }
+    .btn {
+      display: block; width: 100%; padding: 11px; cursor: pointer;
+      border: 0; border-radius: 9px; background: var(--accent); color: #fff;
+      font-family: inherit; font-size: 13px; font-weight: 650;
+      transition: background .12s, opacity .12s;
+    }
+    .btn:hover:not(:disabled) { background: #4460e6; }
+    .btn:disabled { opacity: .6; cursor: default; }
+    .btn.stop { background: var(--err); }
+    .btn.stop:hover:not(:disabled) { background: #b93b32; }
+    .est { color: var(--muted); font-size: 11.5px; margin: 7px 0 0; text-align: center; min-height: 14px; }
+    .status { margin-top: 10px; }
+    .status-text { font-size: 12px; word-break: break-word; }
+    .bar { height: 3px; margin-top: 6px; border-radius: 2px; background: var(--border); overflow: hidden; }
+    .bar-fill { height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width .25s ease; }
+    .list {
+      margin-top: 6px; display: flex; flex-direction: column; gap: 7px;
+      max-height: 320px; overflow: auto;
+    }
+    /* Каждое занятие — отдельный небольшой блок */
+    .lesson {
+      display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+      border: 1px solid var(--border); border-radius: 10px; background: var(--panel);
+    }
+    .lesson-info { flex: 1 1 auto; min-width: 0; }
+    .lesson-name { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lesson-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .lesson-btn {
+      flex: 0 0 auto; padding: 5px 9px; border: 1px solid var(--accent); border-radius: 7px;
+      background: transparent; color: var(--accent);
+      font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background .12s, color .12s;
+    }
+    .lesson-btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+    .lesson-btn:disabled { opacity: .5; cursor: default; }
+    .hint { color: var(--muted); font-size: 11px; margin: 12px 0 0; text-align: center; }
+    .h { font-size: 13px; font-weight: 650; margin: 4px 0 10px; }
+    .range { display: flex; align-items: center; gap: 8px; }
+    .num {
+      width: 72px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px;
+      background: var(--panel); color: var(--text); font-family: inherit; font-size: 13px;
+    }
+    .num:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+    .dash, .unit { color: var(--muted); }
+    .saved { color: var(--ok); font-size: 11px; margin: 8px 0 0; min-height: 14px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img class="logo" src="../icons/icon-32.png" alt="">
+      <div class="name" id="title">Яндекс Учебник</div>
+    </div>
+    <div class="actions">
+      <button id="settingsBtn" class="icon" type="button" title="Настройки">⚙</button>
+      <button id="backBtn" class="icon" type="button" title="Назад" hidden>←</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="menuView">
+      <button id="runAll" class="btn" type="button">Решить все</button>
+      <p class="est" id="est"></p>
+
+      <div id="statusBox" class="status" hidden>
+        <div class="status-text" id="statusText"></div>
+        <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+      </div>
+
+      <div class="list" id="lessonList"></div>
+      <p class="hint" id="hint"></p>
+    </section>
+
+    <section id="settingsView" hidden>
+      <h3 class="h">Время решения</h3>
+      <div class="range">
+        <input id="timeFrom" class="num" type="number" min="1" max="600" step="1" value="7">
+        <span class="dash">—</span>
+        <input id="timeTo" class="num" type="number" min="1" max="600" step="1" value="13">
+        <span class="unit">мин</span>
+      </div>
+      <p class="hint" style="text-align:left">В этом интервале проставится время занятия.</p>
+      <p id="saved" class="saved"></p>
+    </section>
+  </main>
+
+  <script src="bulk.js"></script>
+</body>
+</html>

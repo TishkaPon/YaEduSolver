@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-2: #f1f3f6;
+      --text: #1b1f24;
+      --muted: #7a828e;
+      --border: #e6e8ec;
+      --accent: #4d6bfe;
+      --accent-soft: #eef1ff;
+      --ok: #2f9e6e;
+      --warn: #c47f17;
+      --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 6px 20px rgba(16, 24, 40, .06);
+      --radius: 12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1115;
+        --panel: #16181d;
+        --text: #e8eaed;
+        --muted: #8b93a1;
+        --border: #24272e;
+        --accent: #5b78ff;
+        --accent-soft: #1b2130;
+        --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 6px 20px rgba(0, 0, 0, .35);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      width: 360px;
+      background: var(--bg);
+      color: var(--text);
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .top { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; }
+    .mark { width: 26px; height: 26px; border-radius: 7px; flex: 0 0 auto; display: block; object-fit: contain; }
+    .name { font-weight: 650; font-size: 14px; }
+    main { padding: 0 16px 16px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+    }
+    .answer-card { padding: 14px 16px 16px; }
+    .answer-label {
+      font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    .answer-value {
+      font: 700 22px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--ok); word-break: break-word; white-space: pre-wrap;
+    }
+    .answer-meta { color: var(--muted); font-size: 11px; margin-top: 10px; min-height: 14px; }
+    .btn {
+      display: block; width: 100%; margin-bottom: 12px;
+      border: 1px solid var(--accent); border-radius: 9px;
+      background: var(--accent); color: #fff;
+      font-family: inherit; font-size: 12.5px; font-weight: 600;
+      padding: 9px 12px; cursor: pointer;
+      transition: background .12s, border-color .12s;
+    }
+    .btn:hover { background: #4460e6; border-color: #4460e6; }
+    .btn:disabled { opacity: .65; cursor: default; }
+    .btn[hidden] { display: none; }
+    .empty { padding: 16px; color: var(--muted); }
+    .empty b { color: var(--text); display: block; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <img class="mark" src="../icons/icon-32.png" alt="">
+    <div class="name">ЕГЭ</div>
+  </header>
+
+  <main>
+    <button id="fillBtn" class="btn" type="button" hidden>Заполнить и сохранить</button>
+
+    <section id="answerCard" class="card answer-card" hidden>
+      <div class="answer-label">Ответ</div>
+      <div id="answerValue" class="answer-value"></div>
+      <div id="answerMeta" class="answer-meta"></div>
+    </section>
+
+    <section id="emptyCard" class="card empty">
+      <b id="emptyTitle">Жду данные…</b>
+      <span id="emptyText"></span>
+    </section>
+  </main>
+
+  <script src="ege.js"></script>
+</body>
+</html>
