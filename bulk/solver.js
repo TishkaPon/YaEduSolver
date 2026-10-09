@@ -49,7 +49,22 @@
    * хранится на один уровень вложенности глубже, чем ждёт сервер, поэтому
    * единственную массив-обёртку разворачиваем. А выбор — это множество индексов:
    * в данных бывает [3,3,5], но сам сайт отправляет [3,5] (проверено по HAR).
+   *
+   * Значение inline-поля, состоящее из нескольких строк, — это допустимые
+   * варианты написания одного ответа (["СА","са"], ["K = 50","K=50","K= 50"]).
+   * Сервер сравнивает строку целиком, поэтому берём первый вариант: отправка
+   * всего массива даёт mistakes:1 (проверено по HAR).
    */
+  function fieldValue(item) {
+    if (!Array.isArray(item)) return item;
+    if (item.length === 1) return item[0];
+    var allStrings = item.length > 0;
+    for (var i = 0; i < item.length; i++) {
+      if (typeof item[i] !== 'string') { allStrings = false; break; }
+    }
+    return allStrings ? item[0] : item;
+  }
+
   function normalize(value) {
     if (Array.isArray(value)) {
       var arr = value;
@@ -74,8 +89,7 @@
       var key;
       for (key in value) {
         if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
-        var item = value[key];
-        out[key] = (Array.isArray(item) && item.length === 1) ? item[0] : item;
+        out[key] = fieldValue(value[key]);
       }
       return out;
     }

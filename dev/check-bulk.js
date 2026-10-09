@@ -42,6 +42,19 @@ check('normalize: chooseimage и выбор без повторов', function (
   assert.deepStrictEqual(YBS.normalize([['i1'], ['i2']]), [['i1'], ['i2']]); // строки/пары не трогаем
 });
 
+check('normalize: варианты написания в inline-поле — берём первый', function () {
+  // Яндекс перечисляет допустимые написания: ["СА","са"], ["K = 50","K=50","K= 50"].
+  // Отправка всего массива даёт mistakes:1 (видно в HAR), сервер ждёт строку.
+  assert.deepStrictEqual(YBS.normalize({ '1': ['СА', 'са'], '2': ['19'] }), { '1': 'СА', '2': '19' });
+  assert.deepStrictEqual(
+    YBS.normalize({ '1': ['КА = 35', 'КА=35', 'КА =35', 'КА= 35'], '2': ['А'] }),
+    { '1': 'КА = 35', '2': 'А' }
+  );
+  assert.deepStrictEqual(YBS.normalize({ '1': ['35'] }), { '1': '35' });          // один вариант
+  assert.deepStrictEqual(YBS.normalize({ '1': [0, 1, 2] }), { '1': [0, 1, 2] });  // числа не трогаем
+  assert.deepStrictEqual(YBS.normalize({ '1': [[1, 0], [6, 1]] }), { '1': [[1, 0], [6, 1]] });
+});
+
 check('isSolvedState: mistakes — нет, status:0 с верным ответом — решено', function () {
   assert.strictEqual(YBS.isSolvedState({ answered: true, completed: true, status: 1, points: 30, markers: { '1': { mistakes: 0, answer_status: [1], status: 1 } } }), true);
   // ответ совпал (answer_status all 1), но сервер не начислил балл — считаем решённым
