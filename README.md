@@ -14,13 +14,6 @@
 git clone https://github.com/TishkaPon/YaEduSolver.git
 ```
 
-Если git не установлен — скачай архив и распакуй:
-
-```bash
-curl -L https://github.com/TishkaPon/YaEduSolver/archive/refs/heads/main.zip -o YaEduSolver.zip
-unzip YaEduSolver.zip
-```
-
 Либо просто **Code → Download ZIP** на странице репозитория.
 
 Дальше одинаково: открой `chrome://extensions`, включи **Режим разработчика** и нажми **«Загрузить распакованное расширение»** — выбери папку с `manifest.json` (`YaEduSolver` после клонирования или `YaEduSolver-main` после распаковки).
