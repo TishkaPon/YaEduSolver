@@ -71,6 +71,25 @@ check('подпись содержит занятие и задание', functi
   assert(t.indexOf('задание 5/16') !== -1, t);
 });
 
+check('setAction глушит отказ «No tab with id»', function () {
+  var caught = 0;
+  function rejecting() {
+    return { catch: function () { caught++; return Promise.resolve(); } };
+  }
+  var saved = { text: chrome.action.setBadgeText, color: chrome.action.setBadgeBackgroundColor, title: chrome.action.setTitle };
+  chrome.action.setBadgeText = rejecting;
+  chrome.action.setBadgeBackgroundColor = rejecting;
+  chrome.action.setTitle = rejecting;
+  try {
+    B.setAction(1, '1/3', '#000', 't');
+  } finally {
+    chrome.action.setBadgeText = saved.text;
+    chrome.action.setBadgeBackgroundColor = saved.color;
+    chrome.action.setTitle = saved.title;
+  }
+  assert.strictEqual(caught, 3, 'перехватов: ' + caught);
+});
+
 check('нет чередования: одно и то же значение', function () {
   calls.length = 0;
   var state = { running: true, mode: 'all', total: 3, index: 1, taskIndex: 4, taskTotal: 10, text: 'Решаю 4/10…' };

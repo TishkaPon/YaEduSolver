@@ -8,9 +8,10 @@
       color-scheme: light dark;
       --bg: #f7f8fa; --panel: #ffffff; --text: #20242b; --muted: #8a929e;
       --border: #e8eaee; --accent: #4d6bfe; --ok: #2f9e6e; --err: #d0453b;
+      --switch-off: #d7dbe2;
     }
     @media (prefers-color-scheme: dark) {
-      :root { --bg:#121418; --panel:#1b1e24; --text:#e8eaed; --muted:#8b93a1; --border:#262a31; --accent:#5b78ff; }
+      :root { --bg:#121418; --panel:#1b1e24; --text:#e8eaed; --muted:#8b93a1; --border:#262a31; --accent:#5b78ff; --switch-off:#3a4048; }
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
@@ -76,7 +77,30 @@
     .lesson-btn:disabled { opacity: .5; cursor: default; }
     .hint { color: var(--muted); font-size: 11px; margin: 12px 0 0; text-align: center; }
     .h { font-size: 13px; font-weight: 650; margin: 4px 0 10px; }
-    .range { display: flex; align-items: center; gap: 8px; }
+    /* Toggle switch: дорожка + ползунок, всё на CSS-переходах */
+    .switch { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
+    .switch input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; pointer-events: none; }
+    .switch-track {
+      position: relative; flex: 0 0 auto;
+      width: 34px; height: 20px; border-radius: 999px;
+      background: var(--switch-off, var(--border));
+      transition: background .18s ease;
+    }
+    .switch-knob {
+      position: absolute; top: 2px; left: 2px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .28);
+      transition: transform .18s cubic-bezier(.4, 0, .2, 1);
+    }
+    .switch:hover .switch-track { filter: brightness(.96); }
+    .switch input:checked + .switch-track { background: var(--accent); }
+    .switch input:checked + .switch-track .switch-knob { transform: translateX(14px); }
+    .switch input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .switch-text { font-size: 13px; }
+    @media (prefers-reduced-motion: reduce) {
+      .switch-track, .switch-knob { transition: none; }
+    }
+    .range { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
     .num {
       width: 72px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px;
       background: var(--panel); color: var(--text); font-family: inherit; font-size: 13px;
@@ -114,18 +138,35 @@
     </section>
 
     <section id="settingsView" hidden>
-      <h3 class="h">Время решения</h3>
-      <div class="range">
-        <input id="timeFrom" class="num" type="number" min="1" max="600" step="1" value="7">
-        <span class="dash">—</span>
-        <input id="timeTo" class="num" type="number" min="1" max="600" step="1" value="13">
-        <span class="unit">мин</span>
+      <h3 class="h">Режим решения</h3>
+      <label class="switch">
+        <input id="fastMode" type="checkbox">
+        <span class="switch-track"><span class="switch-knob"></span></span>
+        <span class="switch-text">Быстрый режим</span>
+      </label>
+      <p class="hint" style="text-align:left">Медленный режим — симуляция поочерёдного решения.</p>
+
+      <div id="timeBox" hidden>
+        <h3 class="h" style="margin-top:16px">Время решения</h3>
+        <label class="switch">
+          <input id="useTime" type="checkbox">
+          <span class="switch-track"><span class="switch-knob"></span></span>
+          <span class="switch-text">Использовать это время</span>
+        </label>
+        <div class="range">
+          <input id="timeFrom" class="num" type="number" min="0" max="600" step="1" value="7">
+          <span class="dash">—</span>
+          <input id="timeTo" class="num" type="number" min="0" max="600" step="1" value="13">
+          <span class="unit">мин</span>
+        </div>
+        <p class="hint" style="text-align:left">В этот промежуток попадёт время решения занятия.</p>
       </div>
-      <p class="hint" style="text-align:left">В этом интервале проставится время занятия.</p>
+
       <p id="saved" class="saved"></p>
     </section>
   </main>
 
+  <script src="../config.js"></script>
   <script src="bulk.js"></script>
 </body>
 </html>

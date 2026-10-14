@@ -9,12 +9,19 @@ function egeStorageKey(tabId) {
 
 var bulkRunning = {};
 
+// chrome.* в MV3 возвращают промисы, и try/catch их не ловит: если вкладку уже
+// закрыли, «No tab with id» всплывает как uncaught. Глушим такие отказы.
+function swallow(result) {
+  if (result && typeof result.catch === 'function') result.catch(function () {});
+  return result;
+}
+
 function setAction(tabId, text, color, title) {
   try {
     var value = (text == null) ? '' : String(text).slice(0, 6); // ~4 символа влезает комфортно, но Chrome принимает больше
-    chrome.action.setBadgeText({ tabId: tabId, text: value });
-    if (color) chrome.action.setBadgeBackgroundColor({ tabId: tabId, color: color });
-    if (title) chrome.action.setTitle({ tabId: tabId, title: title });
+    swallow(chrome.action.setBadgeText({ tabId: tabId, text: value }));
+    if (color) swallow(chrome.action.setBadgeBackgroundColor({ tabId: tabId, color: color }));
+    if (title) swallow(chrome.action.setTitle({ tabId: tabId, title: title }));
   } catch (e) {}
 }
 
@@ -99,9 +106,9 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
 });
 
 chrome.tabs.onRemoved.addListener(function (tabId) {
-  try { chrome.storage.session.remove(egeStorageKey(tabId)); } catch (e) {}
+  try { swallow(chrome.storage.session.remove(egeStorageKey(tabId))); } catch (e) {}
   delete bulkRunning[tabId];
-  setAction(tabId, '', null, 'YaEduSolver');
+  // Бейдж уходит вместе с вкладкой — chrome.action для неё уже не вызываем.
 });
 
 chrome.tabs.onUpdated.addListener(function (tabId, info) {

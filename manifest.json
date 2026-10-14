@@ -59,6 +59,7 @@
         "https://education.yandex.ru/classroom/courses/*"
       ],
       "js": [
+        "config.js",
         "bulk/solver.js",
         "bulk/content.js"
       ],

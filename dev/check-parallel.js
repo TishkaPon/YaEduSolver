@@ -76,7 +76,11 @@ globalThis.chrome = {
     sendMessage: function (m, cb) { if (cb) cb(); },
     lastError: null
   },
-  storage: { local: { get: function (d, cb) { cb(d || {}); } }, onChanged: { addListener: function () {} } }
+  // Тест проверяет очередь и параллелизм, а не ожидание времени: быстрый режим.
+  storage: {
+    local: { get: function (d, cb) { cb(Object.assign({}, d, { ybsSlowMode: false })); } },
+    onChanged: { addListener: function () {} }
+  }
 };
 globalThis.YBS = require(solverPath);
 

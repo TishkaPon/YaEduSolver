@@ -75,7 +75,17 @@ globalThis.chrome = {
     lastError: null
   },
   storage: {
-    local: { get: function (defs, cb) { cb(defs || {}); } },
+    local: {
+      get: function (defs, cb) {
+        // Состав уже в кэше: тест не должен ходить за страницами занятий.
+        cb(Object.assign({}, defs, { ybsCompositions: {
+          '262635964': { total: 5, theory: 1, practice: 4 },
+          '262635614': { total: 16, theory: 0, practice: 16 },
+          '262635613': { total: 17, theory: 2, practice: 15 }
+        } }));
+      },
+      set: function () {}
+    },
     onChanged: { addListener: function () {} }
   }
 };
@@ -107,6 +117,7 @@ check('bulk:getState отдаёт список занятий', function () {
   assert.strictEqual(st.lessons[0].total, 5);
   assert.strictEqual(String(st.lessons[0].id), '262635964');
   assert.strictEqual(String(st.lessons[1].id), '262635614');
+  assert.deepStrictEqual(st.lessons[0].composition, { total: 5, theory: 1, practice: 4 });
 });
 
 check('вкладка «Сдано» распознаётся', function () {
@@ -129,6 +140,57 @@ check('стоп без запуска не падает', function () {
 
 check('пустое сообщение игнорируется', function () {
   assert.strictEqual(handler({}, {}, function () {}), undefined);
+});
+
+// --- оценка времени в окне (popup/bulk.js) ---
+var popupSrc = fs.readFileSync(path.join(__dirname, '..', 'popup', 'bulk.js'), 'utf8');
+function popupFn(name, args, values) {
+  var start = popupSrc.indexOf('function ' + name);
+  assert(start >= 0, name + ' не найдена');
+  var depth = 0, end = -1;
+  for (var j = popupSrc.indexOf('{', start); j < popupSrc.length; j++) {
+    if (popupSrc[j] === '{') depth++;
+    else if (popupSrc[j] === '}') { depth--; if (!depth) { end = j + 1; break; } }
+  }
+  return new Function(args.join(','), popupSrc.slice(start, end) + '\nreturn ' + name + ';').apply(null, values);
+}
+var slowLessonSeconds = popupFn('slowLessonSeconds',
+  ['SLOW_SECONDS_PER_TASK', 'SLOW_THEORY_SECONDS'], [37.5, 3.5]);
+
+check('оценка: 21 слайд (14 теории + 6 практики) ≈ 4–5 мин', function () {
+  var sec = slowLessonSeconds(21, { total: 21, theory: 14, practice: 6 });
+  assert(sec > 200 && sec < 320, 'получилось ' + Math.round(sec) + ' с');
+});
+
+check('оценка остатка: 7 практических считаются как практика', function () {
+  var comp = { total: 21, theory: 14, practice: 7 };
+  var left = slowLessonSeconds(7, comp);
+  assert.strictEqual(left, 7 * 37.5, 'получилось ' + left + ' с');
+  // теория уже пройдена — остаток считаем практикой, а не средней ценой слайда
+  assert(left > 200, 'слишком мало: ' + left);
+});
+
+check('оценка остатка: если осталась только теория — она дешёвая', function () {
+  var comp = { total: 10, theory: 10, practice: 0 };
+  assert.strictEqual(slowLessonSeconds(4, comp), 14);
+});
+
+check('оценка: без состава считаем всё практикой', function () {
+  assert.strictEqual(slowLessonSeconds(10, null), 375);
+  assert.strictEqual(slowLessonSeconds(0, null), 0);
+});
+
+var popupNormalize = popupFn('normalizeRange', ['CFG', 'DEFAULT_FROM', 'DEFAULT_TO'],
+  [require(path.join(__dirname, '..', 'config.js')), 7, 13]);
+
+check('промежуток в окне: левое не больше правого', function () {
+  assert.deepStrictEqual(popupNormalize(13, 7), { from: 7, to: 13 });
+  assert.deepStrictEqual(popupNormalize(0, 0), { from: 0, to: 0 });
+  assert.deepStrictEqual(popupNormalize('', ''), { from: 7, to: 13 });
+});
+
+check('оценка: чистая теория дешёвая', function () {
+  assert.strictEqual(slowLessonSeconds(10, { total: 10, theory: 10, practice: 0 }), 35);
 });
 
 if (problems) { console.log('ПРОБЛЕМ: ' + problems); process.exit(1); }

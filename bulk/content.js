@@ -29,8 +29,31 @@
   var MAX_FETCH = 6;             // одновременно грузим не больше N run-страниц (бэкенд тоже режет)
   var TRACK_LAST_ACTIVE = false; // слать patch-lesson-last-active (держит лок результата)
   var CONFLICT_DELAY = 900;    // пауза при 409 result is locked
-  var timeFrom = 7;            // мин — нижняя граница времени решения
-  var timeTo = 13;             // мин — верхняя граница времени решения
+
+  // Время считаем сами: теория — 2–5 с, страница с практикой — 27–48 с
+  // (сколько на ней заданий, неважно).
+  var PRACTICE_MIN = 27;
+  var PRACTICE_MAX = 48;
+  var THEORY_MIN = 2;
+  var THEORY_MAX = 5;
+  var slowMode = true;         // по умолчанию ждём это время реально
+
+  // Расширенные настройки: флаг выставляет разработчик в config.js. Если он
+  // включён, в окне можно задать промежуток времени и взять его в работу.
+  var CFG = (typeof globalThis !== 'undefined' && globalThis.YBSConfig) || {};
+  var DEFAULT_TIME_FROM = (CFG.DEFAULT_TIME_FROM != null) ? CFG.DEFAULT_TIME_FROM : 7;
+  var DEFAULT_TIME_TO = (CFG.DEFAULT_TIME_TO != null) ? CFG.DEFAULT_TIME_TO : 13;
+  var timeFrom = DEFAULT_TIME_FROM;
+  var timeTo = DEFAULT_TIME_TO;
+  var useCustomTime = false;   // галочка «использовать это время»
+
+  function advancedSettings() { return CFG.advanced === true; }
+
+  function normalizeRange(from, to) {
+    if (typeof CFG.normalizeRange === 'function') return CFG.normalizeRange(from, to);
+    return { from: DEFAULT_TIME_FROM, to: DEFAULT_TIME_TO };
+  }
+
 
   // Очередь живёт в контент-скрипте, поэтому решение продолжается,
   // даже когда окно расширения закрыто.
@@ -306,9 +329,27 @@
     });
   }
 
-  // Живое распределение времени по заданиям: не поровну, а «как в жизни» —
-  // короткие решения часты, длинные редки, иногда залипаешь на задании.
-  // Возвращает массив секунд длиной count, сумма ровно totalSeconds.
+  function randomInt(lo, hi) {
+    if (hi < lo) { var swap = lo; lo = hi; hi = swap; }
+    return lo + Math.floor(Math.random() * (hi - lo + 1));
+  }
+
+  // Сколько секунд «стоит» задание: теорию просто пролистываем (2–5 с),
+  // на страницу с практикой тратим 27–48 с.
+  function stepSeconds(step) {
+    if (step && step.kind === 'theory') return randomInt(THEORY_MIN, THEORY_MAX);
+    return randomInt(PRACTICE_MIN, PRACTICE_MAX);
+  }
+
+  // Сколько занятий решать одновременно: медленный режим идёт строго по очереди,
+  // быстрый — все сразу (или MAX_PARALLEL, если лимит задан).
+  function workerCount(jobCount) {
+    if (slowMode) return 1;
+    return (MAX_PARALLEL > 0) ? Math.min(MAX_PARALLEL, jobCount) : jobCount;
+  }
+
+  // Раскладываем общее время занятия по заданиям «как в жизни»: короткие решения
+  // часты, длинные редки, иногда залипаешь. Возвращает секунды, сумма ровно total.
   function distributeTime(totalSeconds, count, minSeconds) {
     var out = [];
     if (count <= 0) return out;
@@ -319,7 +360,6 @@
     var weights = [];
     var sum = 0;
     for (var i = 0; i < count; i++) {
-      // экспоненциально-подобные веса: большинство задач быстрые, немногие долгие
       var w = -Math.log(1 - Math.random() * 0.999);
       if (Math.random() < 0.15) w *= 2.5 + Math.random() * 2; // «залип» на задании
       weights.push(w);
@@ -331,7 +371,6 @@
       out.push(v);
       acc += v;
     }
-    // Секунды, потерянные на округлении, раскидываем по случайным заданиям.
     var leftover = total - acc;
     var order = [];
     for (var k = 0; k < count; k++) order.push(k);
@@ -341,6 +380,15 @@
     }
     for (var n = 0; n < leftover; n++) out[order[n % count]] += 1;
     return out;
+  }
+
+  // Ожидание с оглядкой на «Остановить»: длинное задание не должно вешать стоп.
+  async function waitTime(ms) {
+    var end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (queue.stop) return;
+      await sleep(Math.min(250, end - Date.now()));
+    }
   }
 
   // Отправляем время ОДНОГО задания (вызывается сразу после его решения).
@@ -356,28 +404,29 @@
     }, plan.sk, 4, CONFLICT_DELAY, options);
   }
 
-  // План времени: доводим общее spent_time занятия до случайной цели из интервала
-  // настроек и раскладываем разницу по заданиям (живой разброс). Отправлять это
-  // будем по кусочку сразу после решения каждого задания.
+  // План времени: сколько секунд стоит каждое задание. Отправляем по кусочку
+  // сразу после решения задания; в медленном режиме ещё и реально столько ждём.
   function buildTimePlan(plan, steps) {
-    if (!plan.resultId) return null;
-    var anchors = (steps || []).filter(function (s) { return s.kind !== 'skip'; });
-    if (!anchors.length) return null;
-    var lo = Math.max(1, Number(timeFrom) || 1);
-    var hi = Math.max(lo, Number(timeTo) || lo);
-    var target = Math.round((lo + Math.random() * (hi - lo)) * 60);
-    var delta = target - (Number(plan.spentTime) || 0);
-    if (delta <= 0) return null;
-    return { anchors: anchors, slices: distributeTime(delta, anchors.length, 8) };
-  }
+    var anchors = (steps || []).filter(function (s) { return s && s.kind !== 'skip'; });
+    if (!anchors.length) return { anchors: [], slices: [] };
 
-  // Повторный запуск: решать нечего, но время всё равно доводим до цели.
-  async function flushSpentTime(plan) {
-    var timePlan = buildTimePlan(plan, plan.steps);
-    if (!timePlan) return;
-    for (var i = 0; i < timePlan.anchors.length; i++) {
-      try { await sendSpentSlice(plan, timePlan.anchors[i], timePlan.slices[i]); } catch (e) {}
+    // Расширенные настройки: доводим общее время занятия до случайной цели из
+    // указанного промежутка и раскладываем разницу по заданиям. 0—0 значит
+    // «время не проставлять»: цель 0, все кусочки нулевые.
+    if (advancedSettings() && useCustomTime) {
+      var lo = Math.max(0, Math.floor(Number(timeFrom) || 0));
+      var hi = Math.max(lo, Math.floor(Number(timeTo) || 0));
+      // 0—0 значит «время не отправлять совсем»: тогда ниже все кусочки нулевые,
+      // и ни одного запроса update-spent-time не уйдёт (и ждать нечего).
+      var target = (lo === 0 && hi === 0) ? 0 : Math.round((lo + Math.random() * (hi - lo)) * 60);
+      var delta = target - (Number(plan.spentTime) || 0);
+      var custom = (delta > 0) ? distributeTime(delta, anchors.length) : null;
+      if (!custom) { custom = []; for (var c = 0; c < anchors.length; c++) custom.push(0); }
+      return { anchors: anchors, slices: custom };
     }
+
+    var slices = anchors.map(function (step) { return stepSeconds(step); });
+    return { anchors: anchors, slices: slices };
   }
 
   // ---------------- список занятий ----------------
@@ -387,7 +436,11 @@
   }
 
   function lightLesson(lesson) {
-    return { id: lesson.id, href: lesson.href, name: lesson.name, done: lesson.done, total: lesson.total };
+    return {
+      id: lesson.id, href: lesson.href, name: lesson.name,
+      done: lesson.done, total: lesson.total,
+      composition: compositionOf(lesson.id)   // сколько теории/практики — для оценки времени
+    };
   }
 
   function scanLessons() {
@@ -490,6 +543,50 @@
     return (lessonCache.list && lessonCache.list.length) ? lessonCache.list : null;
   }
 
+  // Состав занятия — сколько слайдов теории и практики. От него зависит оценка
+  // времени: теория идёт 2–5 с, практика 27–48 с. Страницы занятий тяжёлые,
+  // поэтому грузим небольшими порциями только когда ничего не решаем, и
+  // запоминаем: со второго раза состав берётся из хранилища.
+  var compositions = {};
+  var compositionBusy = false;
+
+  function compositionOf(id) { return compositions[String(id)] || null; }
+
+  function saveCompositions() {
+    try {
+      var saved = chrome.storage.local.set({ ybsCompositions: compositions });
+      if (saved && typeof saved.catch === 'function') saved.catch(function () {});
+    } catch (e) {}
+  }
+
+  async function refreshCompositions() {
+    if (compositionBusy || queue.running) return;
+    var todo = currentLessonList().filter(function (lesson) { return !compositionOf(lesson.id); });
+    if (!todo.length) return;
+    compositionBusy = true;
+    try {
+      var batch = todo.slice(0, 8); // понемногу за проход, чтобы не ловить 429
+      for (var i = 0; i < batch.length && !queue.running; i++) {
+        var href = batch[i].href;
+        try {
+          var loaded = await fetchLessonData(new URL(href, location.origin).href);
+          var plan = YBS.buildPlan(loaded.data, YBS.clessonIdFromHref(href));
+          var counts = { total: plan.steps.length, theory: 0, practice: 0 };
+          plan.steps.forEach(function (step) {
+            if (step.kind === 'theory') counts.theory++;
+            else if (step.kind !== 'skip') counts.practice++;
+          });
+          compositions[String(batch[i].id)] = counts;
+        } catch (e) {}
+        await sleep(120);
+      }
+      saveCompositions();
+      broadcast();
+    } finally {
+      compositionBusy = false;
+    }
+  }
+
   // Занятие для запуска: данные — из API, узел карточки — из DOM (если отрисован).
   function resolveLesson(id) {
     var key = String(id);
@@ -532,6 +629,9 @@
     return {
       running: queue.running,
       stopping: queue.stop,
+      slow: slowMode,
+      advanced: advancedSettings(),
+      customTime: { on: !!(advancedSettings() && useCustomTime), from: timeFrom, to: timeTo },
       mode: queue.mode,
       index: queue.completed || 0,   // сколько занятий уже решено
       total: queue.total || 0,
@@ -611,10 +711,9 @@
     var skippedNote = skipped.length ? (', пропущено (ручные): ' + skipped.length) : '';
 
     if (!pending.length) {
-      // Решать нечего — но время всё равно доводим до цели (повторный запуск).
+      // Решать нечего — занятие уже готово, время не трогаем.
       job.taskIndex = 0;
       job.taskTotal = 0;
-      try { await flushSpentTime(plan); } catch (e) {}
       toast('Занятие решено: ' + alreadyDone + ' из ' + plan.steps.length + skippedNote + '.');
       if (!skipped.length && anchor) setTimeout(function () { animateRemove(anchor); }, 800);
       return { ok: true, done: alreadyDone, total: plan.steps.length, wrong: 0, failed: 0 };
@@ -632,13 +731,23 @@
       job.taskIndex = i + 1;
       job.taskTotal = pending.length;
       report('Решаю ' + (i + 1) + '/' + pending.length + '…');
+      var stepStarted = Date.now();
       results.push(await runStep(pending[i], plan));
-      // Начисляем время сразу после решения задания, но не ждём ответа: запрос
-      // уходит параллельно со следующим заданием. Перед сдачей дождёмся всех.
-      if (timePlan && timePlan.slices[i] > 0) {
-        pendingTime.push(sendSpentSlice(plan, pending[i], timePlan.slices[i]).catch(function () {}));
+      // Время задания записываем сразу, не дожидаясь ответа: запрос уходит в фоне.
+      var stepTime = (timePlan && timePlan.slices[i]) || 0;
+      if (stepTime > 0) {
+        pendingTime.push(sendSpentSlice(plan, pending[i], stepTime).catch(function () {}));
       }
-      if (i < pending.length - 1) await sleep(SLOT_DELAY);
+      if (i < pending.length - 1) {
+        if (slowMode) {
+          // Медленный режим: реально выжидаем записанное время (минус то, что уже
+          // ушло на запрос), поэтому решение идёт «как у человека».
+          var left = stepTime * 1000 - (Date.now() - stepStarted);
+          if (left > 0) await waitTime(left);
+        } else {
+          await sleep(SLOT_DELAY); // быстрый: только пауза между запросами
+        }
+      }
     }
 
     var sent = results.filter(function (r) { return r === 'ok'; }).length;
@@ -765,9 +874,9 @@
       }
     }
     var workers = [];
-    // Разные занятия пишут в разные resultId, поэтому лимит не нужен: запускаем
-    // все сразу. MAX_PARALLEL > 0 остаётся как страховка от троттлинга сервера.
-    var count = (MAX_PARALLEL > 0) ? Math.min(MAX_PARALLEL, jobs.length) : jobs.length;
+    // Медленный режим — строго по очереди; быстрый — сразу все (разные занятия
+    // пишут в разные resultId, MAX_PARALLEL > 0 остаётся страховкой от троттлинга).
+    var count = workerCount(jobs.length);
     for (var w = 0; w < count; w++) workers.push(worker());
     await Promise.all(workers);
 
@@ -804,7 +913,7 @@
 
   chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     if (!message || !message.type) return;
-    if (message.type === 'bulk:getState') { sendResponse(status()); return true; }
+    if (message.type === 'bulk:getState') { sendResponse(status()); refreshCompositions(); return true; }
     if (message.type === 'bulk:solveAll') { solveAll(); sendResponse({ ok: true }); return true; }
     if (message.type === 'bulk:solveOne') {
       if (queue.running) { sendResponse({ ok: false, reason: 'busy' }); return true; }
@@ -819,19 +928,42 @@
   });
 
   try {
-    chrome.storage.local.get({ ybsTimeFrom: 7, ybsTimeTo: 13 }, function (values) {
-      timeFrom = Number(values.ybsTimeFrom) || 7;
-      timeTo = Number(values.ybsTimeTo) || 13;
+    chrome.storage.local.get({
+      ybsSlowMode: true,
+      ybsCompositions: {},
+      ybsTimeFrom: DEFAULT_TIME_FROM,
+      ybsTimeTo: DEFAULT_TIME_TO,
+      ybsUseTime: false
+    }, function (values) {
+      slowMode = values.ybsSlowMode !== false;
+      if (values.ybsCompositions && typeof values.ybsCompositions === 'object' && !Array.isArray(values.ybsCompositions)) {
+        compositions = values.ybsCompositions;
+      }
+      var range = normalizeRange(values.ybsTimeFrom, values.ybsTimeTo);
+      timeFrom = range.from;
+      timeTo = range.to;
+      useCustomTime = values.ybsUseTime === true;
       broadcast();
     });
     chrome.storage.onChanged.addListener(function (changes, area) {
       if (area !== 'local') return;
-      if (changes.ybsTimeFrom) timeFrom = Number(changes.ybsTimeFrom.newValue) || timeFrom;
-      if (changes.ybsTimeTo) timeTo = Number(changes.ybsTimeTo.newValue) || timeTo;
+      if (changes.ybsSlowMode) slowMode = changes.ybsSlowMode.newValue !== false;
+      if (changes.ybsTimeFrom || changes.ybsTimeTo) {
+        var range = normalizeRange(
+          changes.ybsTimeFrom ? changes.ybsTimeFrom.newValue : timeFrom,
+          changes.ybsTimeTo ? changes.ybsTimeTo.newValue : timeTo
+        );
+        timeFrom = range.from;
+        timeTo = range.to;
+      }
+      if (changes.ybsUseTime) useCustomTime = changes.ybsUseTime.newValue === true;
     });
   } catch (e) {}
 
-  refreshLessonCache();
-  var cacheTimer = setInterval(function () { if (!queue.running) refreshLessonCache(); }, 15000);
+  refreshLessonCache().then(function () { refreshCompositions(); });
+  var cacheTimer = setInterval(function () {
+    if (queue.running) return;
+    refreshLessonCache().then(function () { refreshCompositions(); });
+  }, 15000);
   if (cacheTimer && cacheTimer.unref) cacheTimer.unref();
 })();

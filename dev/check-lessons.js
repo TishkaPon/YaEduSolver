@@ -47,7 +47,20 @@ globalThis.document = {
 };
 globalThis.chrome = {
   runtime: { onMessage: { addListener: function (fn) { listeners.push(fn); } }, sendMessage: function (m, cb) { if (cb) cb(); }, lastError: null },
-  storage: { local: { get: function (d, cb) { cb(d || {}); } }, onChanged: { addListener: function () {} } }
+  storage: {
+    local: {
+      get: function (d, cb) {
+        // Состав уже в кэше: не тянем страницы занятий ради оценки времени.
+        cb(Object.assign({}, d, { ybsCompositions: {
+          '100': { total: 5, theory: 1, practice: 4 },
+          '200': { total: 7, theory: 0, practice: 7 },
+          '400': { total: 4, theory: 2, practice: 2 }
+        } }));
+      },
+      set: function () {}
+    },
+    onChanged: { addListener: function () {} }
+  }
 };
 globalThis.YBS = require(solverPath);
 

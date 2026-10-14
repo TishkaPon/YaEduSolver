@@ -36,7 +36,11 @@
       ts: state.receivedAt
     };
     try {
-      chrome.runtime.sendMessage({ type: 'ege:report', report: report });
+      // Колбэк обязателен: без него промис отклоняется, если воркер недоступен
+      // («Receiving end does not exist»), и это всплывает как uncaught.
+      chrome.runtime.sendMessage({ type: 'ege:report', report: report }, function () {
+        void chrome.runtime.lastError;
+      });
     } catch (e) {}
   }
 
